@@ -33,10 +33,22 @@ BROWSH_FIREFOX=${BROWSH_FIREFOX:-auto}
 BROWSH_FROM_SOURCE=${BROWSH_FROM_SOURCE:-0}
 BROWSH_SOURCE_DIR=${BROWSH_SOURCE_DIR:-}
 BROWSH_XPI_VERSION=${BROWSH_XPI_VERSION:-1.8.3}
+# Used only if we have to fetch a Go toolchain before the source tree (and its
+# go.mod) is available to tell us which version the build actually wants.
+GO_FALLBACK_VERSION=${GO_FALLBACK_VERSION:-1.24.4}
 UPSTREAM_REPO="browsh-org/browsh"
 
 WORK_DIR=$(mktemp -d -t browsh-install.XXXXXX)
-trap 'rm -rf "$WORK_DIR"' EXIT
+# Go writes its module cache read-only (0555 dirs, 0444 files), and you can't
+# unlink entries out of a read-only directory. Without the chmod, a source build
+# leaves the temp dir behind and buries the successful install under hundreds of
+# "rm: Permission denied" lines.
+cleanup() {
+	[ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR" ] || return 0
+	chmod -R u+w "$WORK_DIR" 2>/dev/null || true
+	rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWarning:\033[0m %s\n' "$*" >&2; }
@@ -177,9 +189,19 @@ ensure_go() {
 		hash -r
 		go_version_ok && return
 	fi
-	local want
-	want=$(sed -nE 's/^go ([0-9.]+).*/\1/p' "$SRC_DIR/interfacer/go.mod")
-	local url="https://go.dev/dl/go${want}.linux-${ARCH}.tar.gz"
+	# ensure_go is also reachable before SRC_DIR is assigned, and `set -u` turns
+	# that into a crash rather than a fallback. Only read go.mod if it's there.
+	local want=""
+	if [ -r "${SRC_DIR:-}/interfacer/go.mod" ]; then
+		want=$(sed -nE 's/^go ([0-9.]+).*/\1/p' "${SRC_DIR}/interfacer/go.mod")
+	fi
+	want=${want:-$GO_FALLBACK_VERSION}
+	# Go publishes one 32-bit ARM build, named armv6l; there is no armv7/armv6.
+	local go_arch=$ARCH
+	case "$go_arch" in
+	armv7 | armv6) go_arch=armv6l ;;
+	esac
+	local url="https://go.dev/dl/go${want}.linux-${go_arch}.tar.gz"
 	log "Downloading Go $want from $url"
 	curl -fsSL --retry 3 -o "$WORK_DIR/go.tar.gz" "$url" || die "Couldn't download Go. Install Go 1.21+ and re-run."
 	mkdir -p "$WORK_DIR/goroot"
