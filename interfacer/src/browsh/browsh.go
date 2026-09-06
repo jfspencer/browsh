@@ -83,6 +83,14 @@ func Shutdown(err error) {
 	exitCode := 0
 	if !errors.Is(err, errNormalExit) {
 		exitCode = 1
+		// Otherwise errors only ever end up in the (optional) debug log and the user is
+		// left staring at an empty terminal.
+		fmt.Fprintf(os.Stderr, "Browsh exited with an error: %s\n", err)
+		if logfile != "" {
+			fmt.Fprintf(os.Stderr, "See %s for details.\n", logfile)
+		} else {
+			fmt.Fprintln(os.Stderr, "Run Browsh with --debug to write a debug.log in the current directory.")
+		}
 	}
 	os.Exit(exitCode)
 }

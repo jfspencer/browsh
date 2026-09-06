@@ -66,6 +66,13 @@ func ensureConfigFile(path string) {
 
 // Gets a cross-platform path to store a Browsh-specific Firefox profile
 func getFirefoxProfilePath() string {
+	if isSnapFirefox() {
+		dir := filepath.Join(getSnapFirefoxDataDir(), "firefox_profile")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			Shutdown(err)
+		}
+		return dir
+	}
 	configDirs := configdir.New(getConfigNamespace(), "firefox_profile")
 	folders := configDirs.QueryFolders(configdir.Global)
 	folders[0].MkdirAll()

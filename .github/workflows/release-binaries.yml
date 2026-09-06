@@ -1,0 +1,71 @@
+# Builds Linux binaries (with the signed webextension embedded) and attaches them
+# to a GitHub release, so that install.sh can download a prebuilt binary instead
+# of compiling from source.
+#
+# Trigger it by pushing a tag like `v1.8.2-1`, or manually from the Actions tab.
+name: Release binaries
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update (eg v1.8.2-1)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  # The signed webextension is only published by the upstream project. It has to
+  # match a version they've released, it does not need to match the binary version.
+  XPI_VERSION: "1.8.3"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: interfacer/go.mod
+
+      - name: Download signed webextension
+        run: |
+          curl -fsSL --retry 3 \
+            -o interfacer/src/browsh/browsh.xpi \
+            "https://github.com/browsh-org/browsh/releases/download/v${XPI_VERSION}/browsh-${XPI_VERSION}.xpi"
+          test "$(wc -c < interfacer/src/browsh/browsh.xpi)" -ge 500
+
+      - name: Build
+        working-directory: interfacer
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p ../dist
+          for target in amd64 arm64 armv7 armv6 386; do
+            arm=""
+            arch="$target"
+            case "$target" in
+              armv7) arch=arm; arm=7 ;;
+              armv6) arch=arm; arm=6 ;;
+            esac
+            echo "Building linux/$target"
+            GOOS=linux GOARCH="$arch" GOARM="$arm" \
+              go build -trimpath -ldflags "-s -w" -o "../dist/browsh_linux_${target}" ./cmd/browsh
+          done
+          (cd ../dist && sha256sum browsh_linux_* > SHA256SUMS)
+          ls -la ../dist
+
+      - name: Smoke test
+        run: ./dist/browsh_linux_amd64 --version
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

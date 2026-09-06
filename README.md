@@ -35,11 +35,51 @@ is running somewhere else on mains electricity.
 
 ## Installation
 
-Download a binary from the [releases](https://github.com/browsh-org/browsh/releases) (~11MB).
+### Ubuntu / Debian servers (one-liner)
+
+Tested on Ubuntu Server 26.04. Run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jfspencer/browsh/master/install.sh | bash
+```
+
+The script installs Firefox from Mozilla's APT repository if it isn't already
+installed, downloads a prebuilt Browsh binary from this repository's
+[releases](https://github.com/jfspencer/browsh/releases) (or builds one from
+source if there isn't one for your architecture), and installs it to
+`/usr/local/bin/browsh`. No display server is needed, Firefox runs headless.
+
+Options are passed as environment variables, for example to use Ubuntu's snap
+instead of the Mozilla APT package:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jfspencer/browsh/master/install.sh | BROWSH_FIREFOX=snap bash
+```
+
+See the header of [`install.sh`](install.sh) for all options.
+
+#### Ubuntu's snap-packaged Firefox
+
+Ubuntu installs Firefox as a snap by default. The snap sandbox can't read hidden
+directories in your home folder or the system `/tmp`, so older Browsh releases
+crashed on startup with a nil-pointer panic after Firefox refused to open the
+profile. Browsh now detects the snap and keeps its Firefox profile and
+webextension under `~/snap/firefox/common/browsh/` instead, so both packagings
+work.
+
+### Other platforms
+
+Download a binary from the upstream [releases](https://github.com/browsh-org/browsh/releases) (~11MB).
 You will need to have [Firefox](https://www.mozilla.org/en-US/firefox/new/) already installed.
 
 Or download and run the Docker image (~230MB) with:
     `docker run --rm -it browsh/browsh`
+
+### Troubleshooting
+
+If Browsh exits, the reason is printed to the terminal. For more detail run
+`browsh --debug` and read `debug.log` in the current directory, which includes
+Firefox's own console output.
 
 ## Usage
 Most keys and mouse gestures should work as you'd expect on a desktop
